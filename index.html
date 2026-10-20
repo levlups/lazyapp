@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lazy Nap Alarm</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #1e293b;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            text-align: center;
+            width: 320px;
+        }
+        h1 {
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+            color: #38bdf8;
+        }
+        .subtitle {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 25px;
+        }
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        button.preset {
+            background-color: #334155;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button.preset:hover {
+            background-color: #0ea5e9;
+        }
+        button.preset:active {
+            transform: scale(0.95);
+        }
+        button.test-btn {
+            background-color: #475569;
+            grid-column: span 2;
+        }
+        button.test-btn:hover {
+            background-color: #64748b;
+        }
+        #wake-info {
+            background-color: #0f172a;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 1rem;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #334155;
+        }
+        #action-btn {
+            background-color: #ef4444;
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            display: none;
+        }
+        #action-btn:hover {
+            background-color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🛋️ Lazy Napper</h1>
+        <div class="subtitle">Tap your nap length and go right to sleep.</div>
+
+        <div class="buttons-grid">
+            <button class="preset test-btn" onclick="startNap(0.5, true)">⚡ 30 Sec (Test)</button>
+            <button class="preset" onclick="startNap(5)">5 min</button>
+            <button class="preset" onclick="startNap(10)">10 min</button>
+            <button class="preset" onclick="startNap(15)">15 min</button>
+            <button class="preset" onclick="startNap(20)">20 min</button>
+        </div>
+
+        <div id="wake-info">Select a time above</div>
+
+        <button id="action-btn" onclick="handleAction()">Cancel Alarm</button>
+    </div>
+
+    <script>
+        let alarmTimer = null;
+        let warningTimer = null;
+        let alarmInterval = null;
+        let audioContext = null;
+        let isRinging = false;
+
+        function startNap(minutes, isTest = false) {
+            resetAll(); // Clear any existing state
+
+            const now = new Date();
+            const msUntilWake = minutes * 60000;
+            const wakeTime = new Date(now.getTime() + msUntilWake);
+            
+            const timeString = wakeTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: isTest ? '2-digit' : undefined });
+            
+            // Display advance wake-up info
+            document.getElementById('wake-info').innerHTML = `💤 Sleeping now.<br><strong>Wake up at ${timeString}</strong>`;
+            
+            const actionBtn = document.getElementById('action-btn');
+            actionBtn.innerText = "Cancel Alarm";
+            actionBtn.style.display = 'block';
+
+            // Timer for the actual alarm
+            alarmTimer = setTimeout(() => {
+                triggerAlarm();
+            }, msUntilWake);
+
+            // Warning chime before waking up (if nap >= 2 mins)
+            if (!isTest && minutes >= 2) {
+                const msUntilWarning = msUntilWake - 60000;
+                warningTimer = setTimeout(() => {
+                    playChime(440, 0.2);
+                }, msUntilWarning);
+            }
+        }
+
+        function handleAction() {
+            if (isRinging) {
+                stopAlarm();
+            } else {
+                resetAll();
+                document.getElementById('wake-info').innerText = "Select a time above";
+                document.getElementById('action-btn').style.display = 'none';
+            }
+        }
+
+        function resetAll() {
+            if (alarmTimer) clearTimeout(alarmTimer);
+            if (warningTimer) clearTimeout(warningTimer);
+            if (alarmInterval) clearInterval(alarmInterval);
+            alarmTimer = null;
+            warningTimer = null;
+            alarmInterval = null;
+            isRinging = false;
+        }
+
+        function triggerAlarm() {
+            isRinging = true;
+            document.getElementById('wake-info').innerHTML = "⏰ <strong>TIME'S UP! WAKE UP!</strong>";
+            
+            const actionBtn = document.getElementById('action-btn');
+            actionBtn.innerText = "🛑 Stop Alarm & Wake Up";
+            actionBtn.style.display = 'block';
+            
+            // Loop the alarm sound until stopped
+            playAlarmSound();
+            alarmInterval = setInterval(() => {
+                playAlarmSound();
+            }, 2000);
+        }
+
+        function stopAlarm() {
+            resetAll();
+            document.getElementById('wake-info').innerText = "Select a time above";
+            document.getElementById('action-btn').style.display = 'none';
+        }
+
+        // Sound synthesizer helpers
+        function getAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioContext;
+        }
+
+        function playChime(freq, duration) {
+            try {
+                const ctx = getAudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + duration);
+            } catch (e) {
+                console.log("Audio not allowed yet");
+            }
+        }
+
+        function playAlarmSound() {
+            playChime(880, 0.4);
+            setTimeout(() => playChime(1100, 0.4), 200);
+        }
+    </script>
+</body>
+</html>
