@@ -222,6 +222,34 @@
             playChime(880, 0.4);
             setTimeout(() => playChime(1100, 0.4), 200);
         }
+       let wakeLock = null;
+
+// Request wake lock when nap starts
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('Wake Lock active');
+        }
+    } catch (err) {
+        console.error(`Wake Lock failed: ${err.name}, ${err.message}`);
+    }
+}
+
+// Release wake lock when alarm is stopped or canceled
+function releaseWakeLock() {
+    if (wakeLock !== null) {
+        wakeLock.release();
+        wakeLock = null;
+    }
+}
+
+// Re-acquire lock if user switches back to the app
+document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+    }
+});
     </script>
 </body>
 </html>
